@@ -1,87 +1,84 @@
-Sentiment-Aware Chatbot
+Sentiment-Aware and Multilingual Chatbot
+📌 Overview
 
-This project implements an intelligent chatbot capable of detecting and adapting to user emotions in real time. It uses natural language processing (NLP) and machine learning models to identify user sentiment and tailor responses accordingly. The application is built using Streamlit for the frontend interface and Hugging Face Transformers for sentiment analysis.
+This repository contains two independent yet related chatbot implementations developed as part of an internship project.
+Each chatbot focuses on a different core capability — one analyzes sentiment, while the other handles multilingual interactions.
 
-Overview
+🧠 Project 1: Sentiment-Aware Chatbot
 
-The Sentiment-Aware Chatbot analyzes user input to determine emotional tone (positive, negative, or neutral) and generates responses that reflect empathy and awareness. This creates a more engaging and human-like conversation experience.
+Description:
+A chatbot that can understand user emotions through text input and respond empathetically.
+It integrates sentiment analysis models to classify messages as positive, negative, or neutral, then tailors responses accordingly.
 
-Features
+Key Features:
 
-Real-time chat interface built with Streamlit.
+Real-time emotion detection
 
-Automatic emotion detection using pre-trained NLP models.
+Adaptive and context-aware responses
 
-Dynamic responses adjusted based on detected sentiment.
+Streamlit-based interface for user interaction
 
-Visualization of sentiment trends over time.
+Expandable architecture for future emotion-driven applications
 
-Lightweight and easy to deploy on Streamlit Cloud.
+File: sample.py
 
-Tech Stack
-Component	Technology
-Frontend	Streamlit
-Backend	Python
-NLP Model	Hugging Face Transformers (distilbert-base-uncased-finetuned-sst-2-english)
-Visualization	Plotly
-Deployment	Streamlit Cloud
-Installation
+🌍 Project 2: Multilingual Chatbot
 
-Clone the repository
+Description:
+An upgraded chatbot capable of automatic language detection, translation, and response generation across multiple languages.
+This bot enhances accessibility and inclusivity for users worldwide.
 
-git clone https://github.com/jaysharamesh11-commits/sentiment-aware-chatbot
+Key Features:
+
+Detects the user’s language automatically
+
+Supports at least three additional languages beyond English
+
+Provides culturally appropriate and context-sensitive responses
+
+Uses langdetect, googletrans, and deep-translator for smooth multilingual support
+
+File: multilingual_chatbot.py
+
+⚙️ Installation
+
+Clone the repository:
+
+git clone https://github.com/jaysharamesh11-commits/sentiment-aware-chatbot.git
 cd sentiment-aware-chatbot
 
 
-Install dependencies
+Install dependencies:
 
 pip install -r requirements.txt
 
 
-Run the application
+Run the Streamlit app:
 
-streamlit run analysis.py
+streamlit run sample.py
 
-Project Structure
-sentiment-aware-chatbot/
-│
-├── analysis.py             # Main application file
-├── requirements.txt        # Python dependencies
-├── README.md               # Documentation
-└── Screenshots/            # Example outputs (optional)
 
-Deployment
+(or run multilingual_chatbot.py for the upgraded version)
 
-To deploy on Streamlit Cloud:
+🧩 Tech Stack
 
-Push your repository to GitHub.
+Python
 
-Go to Streamlit Cloud
-.
+Transformers
 
-Connect your GitHub account and select the repository.
+LangDetect
 
-Choose main as the branch and analysis.py as the entry file.
+Deep Translator
 
-Deploy the app.
+GoogleTrans
 
-Example Output
-Sentiment	Probability
-Positive	0.84
-Neutral	0.10
-Negative	0.06
-Author
+Streamlit
+
+📸 Screenshots
+
+Include screenshots of both chatbot interfaces in the Screenshots/ directory.
+
+📬 Author
 
 Jaysha Ramesh
-Data Science Student 
-GitHub: jaysharamesh11-commits
-
-Future Enhancements
-
-Implement memory-based responses for contextual awareness.
-
-Add multi-language sentiment detection.
-
-Integrate voice-based input and output.
-
-Improve model accuracy with fine-tuning.
+College Student | Data Science |
