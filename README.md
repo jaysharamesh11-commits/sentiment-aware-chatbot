@@ -1,159 +1,111 @@
-💬 Sentiment-Aware, Multilingual & Dynamic Knowledge Chatbots
+Sentiment-Aware Customer Service Chatbot
+Overview
 
-Combining emotion intelligence, language diversity, and adaptive learning through AI
+This project implements a sentiment-aware customer support chatbot using Streamlit and HuggingFace Transformers.
+The chatbot analyzes user messages, detects emotional tone, identifies issue categories, and generates appropriate customer service responses. It also includes a full analytics dashboard for visualizing sentiment trends and interaction quality.
 
-🧠 Project 1: Sentiment-Aware Chatbot
-📌 Description
+Key Features
+1. Real-Time Sentiment Analysis
 
-This chatbot is designed to understand human emotions and respond empathetically.
-By integrating a sentiment analysis model, it classifies messages as positive, negative, or neutral, then generates responses that align with the user’s mood.
-The system uses a clean, Streamlit-based UI to ensure smooth and interactive conversations.
+Classifies messages as Positive, Negative, or Neutral.
 
-⚡ Key Features
+Uses confidence scores to refine overall interpretation.
 
-Real-time emotion detection through text analysis
+Adjusts tone of response based on sentiment intensity.
 
-Context-aware and emotion-driven responses
+2. Issue Category Detection
 
-Built on a modular architecture, allowing easy integration with future NLP models
+Automatically categorizes user concerns into:
 
-Streamlit interface for dynamic interaction
+Billing
 
-🧩 Tech Stack
+Technical
 
-Python
+Account
 
-Streamlit
+Product
 
-Transformers (Hugging Face)
+General inquiry
 
-TextBlob / VADER Sentiment
+3. Intelligent Response Generation
 
-📂 File
+Empathetic, context-aware replies
 
-sample.py
+Category-specific support statements
 
-🌍 Project 2: Multilingual Chatbot
-📌 Description
+Professional communication patterns
 
-The multilingual chatbot extends communication beyond English, offering real-time language detection, translation, and response generation across multiple languages.
-It ensures inclusivity and cultural sensitivity by tailoring responses based on detected language.
-Users can interact seamlessly without switching between languages manually.
+4. Performance Analytics Dashboard
 
-⚡ Key Features
+Includes:
 
-Automatic language detection using langdetect
+Sentiment distribution visualization
 
-Supports multiple languages (English, Hindi, Tamil, and more)
+Confidence timeline
 
-Bidirectional translation — user input and bot output
+Interaction metrics (counts, trend, accuracy)
 
-Contextually relevant and culturally aware responses
+5. Chat Export
 
-Interactive UI built with Streamlit
+Full conversation exportable as CSV
 
-🧩 Tech Stack
+6. Streamlit-Based Interface
 
-Python
+Clean chat UI
 
-Streamlit
+Conversation controls
 
-LangDetect
+Quick-start example buttons
 
-GoogleTrans / Deep Translator
+Satisfaction rating widget
 
-Transformers
+File
 
-📂 File
+analysis.py
+Contains the full implementation of the chatbot, analytics system, and UI.
 
-multilingual_chatbot.py
-
-💡 Project 3: Sentiment-Aware Chatbot with Dynamic Knowledge Expansion
-📌 Description
-
-This upgraded version fuses sentiment analysis, semantic understanding, and real-time knowledge expansion into one intelligent chatbot.
-Using ChromaDB as a vector database, the chatbot continuously learns from new information sources — allowing it to update its knowledge base dynamically and respond with current, context-rich insights.
-The system blends emotional intelligence with adaptive reasoning for a more human-like conversation experience.
-
-⚡ Key Features
-
-🧠 Dynamic Knowledge Integration — Expands its internal database with new data periodically
-
-💬 Emotion + Context Fusion — Understands tone and retrieves emotionally relevant information
-
-🔍 Semantic Search — Finds conceptually related answers beyond exact keywords
-
-🖥️ Aesthetic UI — Pink background with black text for a friendly and modern interface
-
-⚙️ Periodic Updates — Can auto-refresh knowledge base from web or local data sources
-
-⚡ Streamlit-powered interaction with persistent sessions
-
-🧩 Tech Stack
-
-Python
-
-Streamlit
-
-ChromaDB
-
-Tenacity
-
-Transformers
-
-📂 File
-
-dynamic_knowledge.py
-
-⚙️ Installation
-
-Clone the repository:
-
+Installation
+1. Clone the Repository
 git clone https://github.com/jaysharamesh11-commits/sentiment-aware-chatbot.git
 cd sentiment-aware-chatbot
 
-
-Install dependencies:
-
+2. Install Dependencies
 pip install -r requirements.txt
 
-🚀 How to Run
-🧠 Sentiment Chatbot
-streamlit run sample.py
+Running the Application
+streamlit run analysis.py
 
-🌍 Multilingual Chatbot
-streamlit run multilingual_chatbot.py
+Requirements
+streamlit
+transformers
+pandas
+plotly
+torch
+numpy
 
-💡 Dynamic Knowledge Chatbot
-streamlit run dynamic_knowledge.py
+Example User Inputs
 
-🖼️ Screenshots
+Here are realistic examples used to demonstrate the chatbot’s behavior:
 
-Screenshots for each chatbot are available in the Screenshots/ directory:
+Positive Inputs
 
-Sentiment Chatbot → Screenshots/sentiment_ui.png
+"Your customer service team was extremely helpful today."
 
-Multilingual Chatbot → Screenshots/multilingual_ui.png
+"The new update works perfectly. Great job!"
 
-Dynamic Chatbot → Screenshots/dynamic_ui.png
+"I love using your app. It makes everything easier."
 
-🧰 Common Dependencies
+Negative Inputs
 
-Python 3.10+
+"I was charged twice for the same order."
 
-Streamlit
+"My account keeps logging me out. This is really frustrating."
 
-Transformers
+"The product arrived damaged and I want a refund."
 
-LangDetect
+These examples help demonstrate how the chatbot responds differently depending on sentiment and issue type.
 
-Deep Translator
-
-ChromaDB
-
-Tenacity
-
-👩‍💻 Author
+Author
 
 Jaysha Ramesh
-College Student | Data Science
+Data Science Student
