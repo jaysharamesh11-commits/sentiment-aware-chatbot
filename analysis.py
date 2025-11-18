@@ -1,476 +1,485 @@
 import streamlit as st
-from transformers import pipeline
-import random
-from datetime import datetime
 import pandas as pd
+import numpy as np
+import re
+from datetime import datetime
 import plotly.express as px
-import plotly.graph_objects as go
+from collections import defaultdict
 
-# Initialize sentiment analysis pipeline
-@st.cache_resource
-def load_sentiment_model():
-    return pipeline(
-        "sentiment-analysis",
-        model="distilbert-base-uncased-finetuned-sst-2-english"
-    )
-
-# Customer service response templates
-CUSTOMER_RESPONSES = {
-    "POSITIVE": {
-        "acknowledgment": [
-            "I'm thrilled to hear that! 😊",
-            "That's wonderful news! 🌟",
-            "I'm so glad you're satisfied!",
-            "Fantastic! Your happiness is our priority!"
-        ],
-        "engagement": [
-            "How else can I help make your experience even better?",
-            "Is there anything else I can assist you with today?",
-            "What other services can I help you explore?",
-            "I'd love to help you with anything else you need!"
-        ]
-    },
-    "NEGATIVE": {
-        "acknowledgment": [
-            "I sincerely apologize for this experience. 😔",
-            "I understand your frustration, and I'm here to help.",
-            "I'm sorry to hear you're facing this issue.",
-            "Thank you for bringing this to our attention."
-        ],
-        "resolution": [
-            "Let me work on resolving this for you right away.",
-            "I'll do everything I can to make this right.",
-            "Can you provide more details so I can assist you better?",
-            "I'm escalating this to ensure you get the best solution."
-        ],
-        "empathy": [
-            "Your concerns are completely valid.",
-            "I can understand why this is frustrating for you.",
-            "You deserve better service, and I'm here to ensure that.",
-            "I appreciate your patience as we work through this."
-        ]
-    },
-    "NEUTRAL": {
-        "professional": [
-            "Thank you for reaching out.",
-            "I'm here to assist you.",
-            "I understand your inquiry.",
-            "Let me help you with that."
-        ],
-        "clarification": [
-            "Could you provide more details about your concern?",
-            "What specific information are you looking for?",
-            "I'd be happy to explain further.",
-            "Let me get you the information you need."
-        ]
+# Initialize session state
+if 'conversation' not in st.session_state:
+    st.session_state.conversation = []
+if 'sentiment_stats' not in st.session_state:
+    st.session_state.sentiment_stats = {
+        'joy': 0, 'gratitude': 0, 'satisfaction': 0, 'admiration': 0, 
+        'love': 0, 'relief': 0, 'anger': 0, 'frustration': 0, 
+        'sadness': 0, 'disappointment': 0, 'fear': 0, 'confusion': 0, 
+        'disgust': 0, 'neutral': 0
     }
-}
+if 'emotion_trend' not in st.session_state:
+    st.session_state.emotion_trend = []
 
-# Issue categories for routing
-ISSUE_KEYWORDS = {
-    "billing": ["bill", "charge", "payment", "invoice", "refund", "cost", "price"],
-    "technical": ["not working", "error", "bug", "crash", "broken", "issue", "problem"],
-    "account": ["login", "password", "access", "account", "sign in", "username"],
-    "product": ["product", "item", "order", "delivery", "shipping", "quality"],
-    "general": ["help", "question", "info", "information", "how to"]
-}
-
-def classify_sentiment(text, sentiment_result):
-    """Enhanced sentiment classification with confidence thresholds"""
-    label = sentiment_result['label']
-    score = sentiment_result['score']
-    
-    # More nuanced classification
-    if label == "POSITIVE":
-        if score > 0.85:
-            return "POSITIVE", score, "high"
-        elif score > 0.65:
-            return "POSITIVE", score, "medium"
-        else:
-            return "NEUTRAL", score, "low"
-    elif label == "NEGATIVE":
-        if score > 0.85:
-            return "NEGATIVE", score, "high"
-        elif score > 0.65:
-            return "NEGATIVE", score, "medium"
-        else:
-            return "NEUTRAL", score, "low"
-    else:
-        return "NEUTRAL", score, "medium"
-
-def detect_issue_category(text):
-    """Detect the category of customer issue"""
-    text_lower = text.lower()
-    for category, keywords in ISSUE_KEYWORDS.items():
-        if any(keyword in text_lower for keyword in keywords):
-            return category
-    return "general"
-
-def generate_customer_response(sentiment, confidence_level, issue_category, user_message):
-    """Generate contextually appropriate customer service response"""
-    response_parts = []
-    
-    if sentiment == "POSITIVE":
-        response_parts.append(random.choice(CUSTOMER_RESPONSES["POSITIVE"]["acknowledgment"]))
-        response_parts.append(random.choice(CUSTOMER_RESPONSES["POSITIVE"]["engagement"]))
-        
-    elif sentiment == "NEGATIVE":
-        # More empathetic for high-confidence negative sentiment
-        if confidence_level == "high":
-            response_parts.append(random.choice(CUSTOMER_RESPONSES["NEGATIVE"]["acknowledgment"]))
-            response_parts.append(random.choice(CUSTOMER_RESPONSES["NEGATIVE"]["empathy"]))
-        response_parts.append(random.choice(CUSTOMER_RESPONSES["NEGATIVE"]["resolution"]))
-        
-        # Add category-specific help
-        if issue_category == "billing":
-            response_parts.append("I'm connecting you with our billing specialist who can review your account.")
-        elif issue_category == "technical":
-            response_parts.append("Our technical team will investigate this immediately.")
-        elif issue_category == "account":
-            response_parts.append("Let me help you regain access to your account securely.")
+class AdvancedSentimentAnalyzer:
+    def __init__(self):
+        # Expanded sentiment lexicon with more nuanced emotions
+        self.sentiment_words = {
+            # Positive emotions
+            'joy': {
+                'happy', 'joy', 'delighted', 'ecstatic', 'thrilled', 'overjoyed',
+                'excited', 'bliss', 'cheerful', 'jubilant', 'elated', 'gleeful'
+            },
+            'gratitude': {
+                'thanks', 'thank you', 'grateful', 'appreciate', 'appreciation',
+                'blessed', 'obliged', 'indebted', 'thankful'
+            },
+            'satisfaction': {
+                'satisfied', 'pleased', 'content', 'fulfilled', 'happy with',
+                'good enough', 'meets expectations', 'well done'
+            },
+            'admiration': {
+                'amazing', 'awesome', 'brilliant', 'excellent', 'fantastic',
+                'wonderful', 'perfect', 'outstanding', 'impressive', 'superb'
+            },
+            'love': {
+                'love', 'adore', 'cherish', 'treasure', 'fond of', 'affection'
+            },
+            'relief': {
+                'relieved', 'phew', 'thank goodness', 'finally', 'at last',
+                'weight off', 'burden lifted'
+            },
             
-    else:  # NEUTRAL
-        response_parts.append(random.choice(CUSTOMER_RESPONSES["NEUTRAL"]["professional"]))
-        response_parts.append(random.choice(CUSTOMER_RESPONSES["NEUTRAL"]["clarification"]))
-    
-    return " ".join(response_parts)
-
-def calculate_metrics(messages):
-    """Calculate performance metrics"""
-    if not messages:
-        return None
-    
-    user_messages = [m for m in messages if m["role"] == "user"]
-    
-    sentiments = [m["sentiment"] for m in user_messages]
-    confidences = [m["confidence"] for m in user_messages]
-    
-    metrics = {
-        "total_interactions": len(user_messages),
-        "positive_count": sentiments.count("POSITIVE"),
-        "negative_count": sentiments.count("NEGATIVE"),
-        "neutral_count": sentiments.count("NEUTRAL"),
-        "avg_confidence": sum(confidences) / len(confidences) if confidences else 0,
-        "sentiment_shift": calculate_sentiment_shift(user_messages)
-    }
-    
-    return metrics
-
-def calculate_sentiment_shift(user_messages):
-    """Calculate if sentiment improved over conversation"""
-    if len(user_messages) < 2:
-        return "N/A"
-    
-    first_sentiment = user_messages[0]["sentiment"]
-    last_sentiment = user_messages[-1]["sentiment"]
-    
-    sentiment_score = {"POSITIVE": 1, "NEUTRAL": 0, "NEGATIVE": -1}
-    
-    shift = sentiment_score[last_sentiment] - sentiment_score[first_sentiment]
-    
-    if shift > 0:
-        return "Improved ↑"
-    elif shift < 0:
-        return "Declined ↓"
-    else:
-        return "Stable →"
-
-def main():
-    st.set_page_config(
-        page_title="Customer Service AI Chatbot",
-        page_icon="🎧",
-        layout="wide"
-    )
-    
-    # Custom CSS
-    st.markdown("""
-        <style>
-        .metric-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
-            border-radius: 10px;
-            color: white;
-            text-align: center;
-            margin: 10px 0;
+            # Negative emotions
+            'anger': {
+                'angry', 'mad', 'furious', 'enraged', 'outraged', 'irate',
+                'livid', 'fuming', 'seething', 'infuriated'
+            },
+            'frustration': {
+                'frustrated', 'annoyed', 'irritated', 'aggravated', 'bothered',
+                'fed up', 'sick of', 'had enough', 'exasperated'
+            },
+            'sadness': {
+                'sad', 'unhappy', 'depressed', 'miserable', 'heartbroken',
+                'disheartened', 'down', 'blue', 'melancholy', 'gloomy'
+            },
+            'disappointment': {
+                'disappointed', 'let down', 'disheartened', 'dissatisfied',
+                'unfulfilled', 'displeased', 'regret', 'dismayed'
+            },
+            'fear': {
+                'worried', 'anxious', 'nervous', 'scared', 'afraid', 'fearful',
+                'terrified', 'panicked', 'concerned', 'apprehensive'
+            },
+            'confusion': {
+                'confused', 'bewildered', 'perplexed', 'puzzled', 'baffled',
+                'lost', 'don\'t understand', 'unclear', 'ambiguous'
+            },
+            'disgust': {
+                'disgusting', 'gross', 'revolting', 'nasty', 'horrible',
+                'awful', 'terrible', 'vile', 'repulsive'
+            }
         }
-        .sentiment-badge {
-            display: inline-block;
-            padding: 5px 15px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: bold;
-            margin: 5px;
-        }
-        .positive { background-color: #4caf50; color: white; }
-        .negative { background-color: #f44336; color: white; }
-        .neutral { background-color: #2196f3; color: white; }
-        .high-confidence { border: 3px solid gold; }
-        .chat-message {
-            padding: 15px;
-            border-radius: 15px;
-            margin: 10px 0;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-        .user-message {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            margin-left: 20%;
-        }
-        .bot-message {
-            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-            color: white;
-            margin-right: 20%;
-        }
-        .issue-category {
-            background-color: #fff3cd;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 11px;
-            display: inline-block;
-            margin: 5px 0;
-        }
-        </style>
-    """, unsafe_allow_html=True)
-    
-    # Header
-    st.title("🎧 Customer Service AI Chatbot")
-    st.markdown("*Emotion-aware support for enhanced customer satisfaction*")
-    
-    # Load model
-    with st.spinner("Initializing AI assistant..."):
-        sentiment_analyzer = load_sentiment_model()
-    
-    # Initialize session state
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    if "satisfaction_rating" not in st.session_state:
-        st.session_state.satisfaction_rating = None
-    
-    # Layout: Main chat + Analytics sidebar
-    col1, col2 = st.columns([2, 1])
-    
-    with col2:
-        st.header("📊 Performance Analytics")
         
-        metrics = calculate_metrics(st.session_state.messages)
+        self.intensifiers = {
+            'very', 'really', 'extremely', 'absolutely', 'completely',
+            'totally', 'utterly', 'incredibly', 'exceptionally'
+        }
         
-        if metrics:
-            # Key Metrics
-            st.metric("Total Interactions", metrics["total_interactions"])
-            st.metric("Sentiment Detection Accuracy", f"{metrics['avg_confidence']:.1%}")
-            st.metric("Sentiment Trend", metrics["sentiment_shift"])
+        self.negations = {'not', "n't", 'no', 'never', 'none', 'nothing', 'nowhere'}
+        
+        self.emojis = {
+            'joy': '😊', 'gratitude': '🙏', 'satisfaction': '👍', 'admiration': '🌟',
+            'love': '❤️', 'relief': '😌', 'anger': '😠', 'frustration': '😤',
+            'sadness': '😢', 'disappointment': '😞', 'fear': '😨', 'confusion': '😕',
+            'disgust': '🤢', 'neutral': '😐'
+        }
+
+    def analyze_sentiment(self, text: str):
+        text = text.lower().strip()
+        words = re.findall(r'\b\w+\b', text)
+        
+        emotion_scores = defaultdict(float)
+        negation_multiplier = 1
+        intensity = 1.0
+        
+        for i, word in enumerate(words):
+            # Check for negations
+            if word in self.negations:
+                negation_multiplier = -0.5  # Reduce impact rather than reverse
+                continue
+                
+            # Check for intensifiers
+            if word in self.intensifiers:
+                intensity = 1.5
+                continue
+                
+            # Score emotions
+            for emotion, emotion_words in self.sentiment_words.items():
+                if word in emotion_words:
+                    emotion_scores[emotion] += 1 * negation_multiplier * intensity
+                    negation_multiplier = 1
+                    intensity = 1.0
+        
+        # Determine primary emotion
+        if emotion_scores:
+            primary_emotion = max(emotion_scores.items(), key=lambda x: x[1])
+            confidence = min(abs(primary_emotion[1]) / 3, 1.0)
             
-            # Sentiment Distribution
-            st.subheader("Sentiment Distribution")
-            sentiment_data = pd.DataFrame({
-                "Sentiment": ["Positive", "Negative", "Neutral"],
-                "Count": [metrics["positive_count"], metrics["negative_count"], metrics["neutral_count"]]
+            # Classify as positive/negative/neutral
+            if primary_emotion[0] in ['joy', 'gratitude', 'satisfaction', 'admiration', 'love', 'relief']:
+                overall_sentiment = 'positive'
+            else:
+                overall_sentiment = 'negative'
+                
+            return overall_sentiment, primary_emotion[0], confidence, dict(emotion_scores)
+        else:
+            return 'neutral', 'neutral', 0.5, {}
+
+class EnhancedSentimentChatbot:
+    def __init__(self):
+        self.analyzer = AdvancedSentimentAnalyzer()
+        
+        self.response_templates = {
+            "joy": [
+                "That's wonderful to hear! Your happiness brightens my day! 😊 What can I help you with?",
+                "I'm thrilled to sense your joy! It's contagious! 🌟 How may I assist you?",
+                "Your cheerful energy is amazing! Let me help make your experience even better! ✨"
+            ],
+            "gratitude": [
+                "You're very welcome! I'm glad I could be of help 🙏 Is there anything else you need?",
+                "Thank you for your kind words! It's my pleasure to assist you 💫 How can I help further?",
+                "I appreciate your gratitude! It motivates me to help you even better 🌈"
+            ],
+            "satisfaction": [
+                "I'm pleased to hear you're satisfied! That's what we aim for 👍 What else can I do for you?",
+                "Great to know things are working well for you! 🎯 How can I continue to assist?",
+                "Satisfaction guaranteed! I'm here to maintain that standard 💪"
+            ],
+            "admiration": [
+                "Thank you for the amazing compliment! You're making me blush 🌟 How can I help?",
+                "I'm honored by your admiration! Let me live up to those expectations 🚀",
+                "Your kind words inspire me to do even better! ✨ What can I assist with?"
+            ],
+            "love": [
+                "That's so heartwarming! I'm here to give you more reasons to love us ❤️",
+                "Your affection means the world! Let me make this experience even more lovable 💖",
+                "I'm feeling the love! Thank you for making this interaction special 💕"
+            ],
+            "relief": [
+                "I'm glad that brought you relief! Let's keep the solutions coming 😌",
+                "Phew! Happy to help ease your mind 💆‍♂️ What else can I clarify for you?",
+                "Relief is what we aim for! Let me help with anything else that's on your mind 🌈"
+            ],
+            "anger": [
+                "I understand you're angry, and I want to help resolve this immediately 😔",
+                "Your frustration is completely valid. Let me work to fix this for you 🛠️",
+                "I hear the anger in your voice, and I'm committed to making this right 💪"
+            ],
+            "frustration": [
+                "I can feel your frustration, and I'm here to smooth things out 🫂",
+                "Let's tackle this frustration together - I'm on your side 🤝",
+                "I understand how frustrating this must be. Let me find a solution right away 🔍"
+            ],
+            "sadness": [
+                "I'm sorry to hear you're feeling down. Let me help brighten your day 🌞",
+                "Your sadness matters to me. Let's work together to improve this situation 💝",
+                "I'm here to help lift your spirits. What can I do to make things better? 🌈"
+            ],
+            "disappointment": [
+                "I understand your disappointment, and I want to exceed your expectations 🎯",
+                "Let me help turn this disappointment into satisfaction 🔄",
+                "I hear your disappointment loud and clear. Let me make this right for you ✨"
+            ],
+            "fear": [
+                "I understand your concerns. Let me help provide clarity and reassurance 🛡️",
+                "There's no need to worry - I'm here to guide you through this 🗺️",
+                "Let's address your fears together. You're in safe hands 🤗"
+            ],
+            "confusion": [
+                "I understand this can be confusing. Let me clarify things for you 📚",
+                "No worries about the confusion - I'm here to make everything clear 💡",
+                "Let me help clear up any confusion. What specific part can I explain? 🔍"
+            ],
+            "disgust": [
+                "I apologize for this unpleasant experience. Let me help fix this immediately 🧹",
+                "I understand why you'd feel this way. Let me work to resolve this 🛠️",
+                "Your feedback is important. Let me help improve this situation right away 💫"
+            ],
+            "neutral": [
+                "Hello! How can I assist you today? 👋",
+                "Hi there! What can I help you with? 🤔",
+                "I'm here and ready to help! What do you need? 💼"
+            ]
+        }
+    
+    def get_response(self, user_input: str):
+        overall_sentiment, primary_emotion, confidence, emotion_scores = self.analyzer.analyze_sentiment(user_input)
+        
+        # Get appropriate response template
+        templates = self.response_templates.get(primary_emotion, self.response_templates["neutral"])
+        response = np.random.choice(templates)
+        
+        # Add emotional emoji
+        emoji = self.analyzer.emojis.get(primary_emotion, '😐')
+        response = f"{emoji} {response}"
+        
+        return response, overall_sentiment, primary_emotion, confidence, emotion_scores
+
+# Initialize chatbot
+chatbot = EnhancedSentimentChatbot()
+
+# Streamlit UI
+st.set_page_config(page_title="Advanced Sentiment Chatbot", page_icon="🧠", layout="wide")
+
+st.title("🧠 Advanced Emotion-Aware Chatbot")
+st.markdown("Chat with me! I can understand complex emotions and respond with empathy.")
+
+# Sidebar for advanced analytics
+with st.sidebar:
+    st.header("📊 Emotional Analytics")
+    
+    if st.session_state.conversation:
+        # Emotion distribution
+        emotion_counts = st.session_state.sentiment_stats.copy()
+        # Remove emotions with zero count for cleaner chart
+        emotion_counts = {k: v for k, v in emotion_counts.items() if v > 0}
+        
+        if emotion_counts:
+            emotion_data = pd.DataFrame({
+                'Emotion': list(emotion_counts.keys()),
+                'Count': list(emotion_counts.values())
             })
             
-            fig = px.pie(sentiment_data, values="Count", names="Sentiment",
-                        color="Sentiment",
-                        color_discrete_map={"Positive": "#4caf50", 
-                                          "Negative": "#f44336", 
-                                          "Neutral": "#2196f3"})
-            fig.update_layout(height=300)
-            st.plotly_chart(fig, use_container_width=True)
+            fig_pie = px.pie(emotion_data, values='Count', names='Emotion', 
+                           title='Emotional Distribution',
+                           color='Emotion')
+            st.plotly_chart(fig_pie, use_container_width=True)
             
-            # Sentiment Timeline
-            if len(st.session_state.messages) > 1:
-                st.subheader("Sentiment Timeline")
-                user_msgs = [m for m in st.session_state.messages if m["role"] == "user"]
-                timeline_df = pd.DataFrame({
-                    "Message": range(1, len(user_msgs) + 1),
-                    "Confidence": [m["confidence"] for m in user_msgs],
-                    "Sentiment": [m["sentiment"] for m in user_msgs]
-                })
-                
-                fig2 = px.line(timeline_df, x="Message", y="Confidence", 
-                             color="Sentiment",
-                             color_discrete_map={"POSITIVE": "#4caf50", 
-                                               "NEGATIVE": "#f44336", 
-                                               "NEUTRAL": "#2196f3"})
-                fig2.update_layout(height=250)
-                st.plotly_chart(fig2, use_container_width=True)
-        else:
-            st.info("Start a conversation to see analytics")
-        
-        # Customer Satisfaction Survey
-        st.subheader("📝 Customer Satisfaction")
-        if st.session_state.messages:
-            rating = st.slider(
-                "Rate your experience (1-5)",
-                min_value=1,
-                max_value=5,
-                value=st.session_state.satisfaction_rating or 3,
-                key="satisfaction_slider"
-            )
-            
-            if st.button("Submit Rating"):
-                st.session_state.satisfaction_rating = rating
-                st.success(f"Thank you for rating us {rating}/5 stars!")
-                
-                if rating >= 4:
-                    st.balloons()
-        
-        # Action Buttons
-        st.markdown("---")
-        if st.button("🗑️ Clear Conversation", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.satisfaction_rating = None
-            st.rerun()
-        
-        if st.button("📥 Export Chat Log", use_container_width=True):
-            if st.session_state.messages:
-                chat_df = pd.DataFrame([
-                    {
-                        "Timestamp": m.get("timestamp", ""),
-                        "Role": m["role"],
-                        "Message": m["content"],
-                        "Sentiment": m.get("sentiment", "N/A"),
-                        "Confidence": m.get("confidence", 0)
-                    }
-                    for m in st.session_state.messages
-                ])
-                csv = chat_df.to_csv(index=False)
-                st.download_button(
-                    "Download CSV",
-                    csv,
-                    "chat_log.csv",
-                    "text/csv"
-                )
+        # Emotion trend over time
+        if len(st.session_state.emotion_trend) > 1:
+            trend_data = pd.DataFrame(st.session_state.emotion_trend)
+            fig_line = px.line(trend_data, x='timestamp', y='sentiment_score', 
+                             title='Emotional Trend Over Time',
+                             markers=True)
+            st.plotly_chart(fig_line, use_container_width=True)
     
-    with col1:
-        st.header("💬 Customer Support Chat")
+    # Emotion guide
+    with st.expander("🎭 Emotion Guide"):
+        st.markdown("""
+        **Positive Emotions:**
+        - 😊 Joy: Happiness, excitement
+        - 🙏 Gratitude: Thankfulness, appreciation  
+        - 👍 Satisfaction: Contentment, fulfillment
+        - 🌟 Admiration: Praise, amazement
+        - ❤️ Love: Affection, adoration
+        - 😌 Relief: Ease, comfort
         
-        # Chat container
-        chat_container = st.container()
-        
-        with chat_container:
-            for msg in st.session_state.messages:
-                if msg["role"] == "user":
-                    st.markdown(f"""
-                        <div class="chat-message user-message">
-                            <strong>Customer:</strong><br>
-                            {msg['content']}
-                        </div>
-                    """, unsafe_allow_html=True)
+        **Negative Emotions:**
+        - 😠 Anger: Frustration, rage
+        - 😤 Frustration: Annoyance, irritation
+        - 😢 Sadness: Unhappiness, disappointment
+        - 😞 Disappointment: Let down, dismay
+        - 😨 Fear: Worry, anxiety
+        - 😕 Confusion: Uncertainty, puzzlement
+        - 🤢 Disgust: Revulsion, distaste
+        """)
+
+# Main chat area
+col1, col2 = st.columns([2, 1])
+
+with col1:
+    st.subheader("💬 Emotional Conversation")
+    
+    # Display conversation with emotional context
+    for msg in st.session_state.conversation:
+        if msg['type'] == 'user':
+            with st.chat_message("user"):
+                st.write(f"**You:** {msg['content']}")
+                if 'primary_emotion' in msg:
+                    emotion = msg['primary_emotion']
+                    emoji = chatbot.analyzer.emojis.get(emotion, '😐')
+                    confidence = msg.get('confidence', 0)
+                    st.caption(f"Detected: {emotion.title()} {emoji} (Confidence: {confidence:.2f})")
                     
-                    # Sentiment analysis display
-                    confidence_class = "high-confidence" if msg.get('confidence_level') == 'high' else ""
-                    st.markdown(f"""
-                        <div>
-                            <span class="sentiment-badge {msg['sentiment'].lower()} {confidence_class}">
-                                {msg['sentiment']} ({msg['confidence']:.1%})
-                            </span>
-                            <span class="issue-category">
-                                Category: {msg.get('issue_category', 'general').upper()}
-                            </span>
-                        </div>
-                    """, unsafe_allow_html=True)
-                else:
-                    st.markdown(f"""
-                        <div class="chat-message bot-message">
-                            <strong>Support Agent:</strong><br>
-                            {msg['content']}
-                        </div>
-                    """, unsafe_allow_html=True)
+                    # Show emotion breakdown for high-confidence detections
+                    if confidence > 0.7 and 'emotion_scores' in msg:
+                        scores = msg['emotion_scores']
+                        top_emotions = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:3]
+                        if len(top_emotions) > 1:
+                            emotion_text = " | ".join([f"{e[0]}: {e[1]:.1f}" for e in top_emotions])
+                            st.caption(f"Emotion mix: {emotion_text}")
+        else:
+            st.chat_message("assistant").write(f"**Bot:** {msg['content']}")
+
+with col2:
+    st.subheader("🎯 Emotional Examples")
+    
+    tab1, tab2 = st.tabs(["Positive", "Negative"])
+    
+    with tab1:
+        st.markdown("""
+        **😊 Joy & Excitement:**
+        - "I'm absolutely thrilled with this!"
+        - "This makes me so happy!"
+        - "I'm overjoyed with the results!"
         
-        # Input area
-        st.markdown("---")
-        user_input = st.text_area(
-            "Describe your issue or question:",
-            key="user_input",
-            placeholder="Example: I was charged twice for my last order...",
-            height=100
-        )
+        **🙏 Gratitude:**
+        - "Thank you so much for your help!"
+        - "I'm incredibly grateful for this"
+        - "You've been a lifesaver!"
         
-        col_a, col_b = st.columns([1, 4])
-        with col_a:
-            send_button = st.button("Send 📤", use_container_width=True)
+        **🌟 Admiration:**
+        - "This is absolutely brilliant!"
+        - "You guys are amazing!"
+        - "Outstanding work!"
+        """)
+    
+    with tab2:
+        st.markdown("""
+        **😠 Anger & Frustration:**
+        - "I'm furious about this situation!"
+        - "This is making me so angry!"
+        - "I've had enough of this!"
         
-        # Process input
-        if send_button and user_input:
-            # Analyze sentiment
-            with st.spinner("Analyzing your message..."):
-                result = sentiment_analyzer(user_input)[0]
-                sentiment, confidence, confidence_level = classify_sentiment(user_input, result)
-                issue_category = detect_issue_category(user_input)
-            
-            # Add user message
-            st.session_state.messages.append({
-                "role": "user",
-                "content": user_input,
-                "sentiment": sentiment,
-                "confidence": confidence,
-                "confidence_level": confidence_level,
-                "issue_category": issue_category,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        **😢 Sadness:**
+        - "This makes me really sad"
+        - "I'm feeling quite down about this"
+        - "This is heartbreaking"
+        
+        **😨 Fear & Worry:**
+        - "I'm really worried about this"
+        - "This situation scares me"
+        - "I'm anxious about what happens next"
+        """)
+
+# Emotional quick test buttons
+st.subheader("🚀 Quick Emotional Test")
+col1, col2, col3 = st.columns(3)
+
+test_messages = {
+    "Joy": "I'm absolutely thrilled and overjoyed with your amazing service! This is fantastic!",
+    "Gratitude": "Thank you so much for your incredible help, I'm truly grateful for your support!",
+    "Frustration": "I'm really frustrated and annoyed with this ongoing issue, it's exasperating!",
+    "Worry": "I'm quite worried and anxious about this situation, it's really concerning me",
+    "Confusion": "I'm completely confused and bewildered by these instructions, nothing makes sense",
+    "Admiration": "This is absolutely brilliant and outstanding work, I'm truly impressed!"
+}
+
+for i, (emotion, message) in enumerate(test_messages.items()):
+    col = [col1, col2, col3][i % 3]
+    with col:
+        if st.button(f"Test {emotion}", key=f"test_{emotion}"):
+            # Simulate user input
+            st.session_state.conversation.append({
+                'type': 'user', 
+                'content': message,
+                'timestamp': datetime.now()
             })
             
-            # Generate bot response
-            bot_response = generate_customer_response(
-                sentiment, confidence_level, issue_category, user_input
-            )
+            # Get bot response
+            response, overall_sentiment, primary_emotion, confidence, emotion_scores = chatbot.get_response(message)
             
-            # Add bot message
-            st.session_state.messages.append({
-                "role": "bot",
-                "content": bot_response,
-                "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            # Add bot response
+            st.session_state.conversation.append({
+                'type': 'assistant',
+                'content': response,
+                'timestamp': datetime.now()
+            })
+            
+            # Update user message with emotion info
+            st.session_state.conversation[-2].update({
+                'sentiment': overall_sentiment,
+                'primary_emotion': primary_emotion,
+                'confidence': confidence,
+                'emotion_scores': emotion_scores
+            })
+            
+            # Update statistics - SAFE ACCESS
+            if primary_emotion in st.session_state.sentiment_stats:
+                st.session_state.sentiment_stats[primary_emotion] += 1
+            else:
+                # Initialize if emotion doesn't exist (shouldn't happen with our fixed init)
+                st.session_state.sentiment_stats[primary_emotion] = 1
+            
+            # Update emotion trend
+            sentiment_score = 1 if overall_sentiment == 'positive' else -1 if overall_sentiment == 'negative' else 0
+            st.session_state.emotion_trend.append({
+                'timestamp': datetime.now(),
+                'sentiment_score': sentiment_score,
+                'emotion': primary_emotion
             })
             
             st.rerun()
-        
-        # Quick response templates
-        if not st.session_state.messages:
-            st.markdown("### 🎯 Quick Start Examples:")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("😊 Positive Feedback", use_container_width=True):
-                    st.session_state.temp_input = "Your service is amazing! I love the new features."
-                    st.rerun()
-            
-            with col2:
-                if st.button("😔 Complaint", use_container_width=True):
-                    st.session_state.temp_input = "I'm very disappointed. My order hasn't arrived and I was charged twice."
-                    st.rerun()
-            
-            with col3:
-                if st.button("😐 General Inquiry", use_container_width=True):
-                    st.session_state.temp_input = "Can you help me understand how to update my payment method?"
-                    st.rerun()
-            
-            if "temp_input" in st.session_state:
-                user_input = st.session_state.temp_input
-                del st.session_state.temp_input
-                
-                result = sentiment_analyzer(user_input)[0]
-                sentiment, confidence, confidence_level = classify_sentiment(user_input, result)
-                issue_category = detect_issue_category(user_input)
-                
-                st.session_state.messages.append({
-                    "role": "user",
-                    "content": user_input,
-                    "sentiment": sentiment,
-                    "confidence": confidence,
-                    "confidence_level": confidence_level,
-                    "issue_category": issue_category,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-                
-                bot_response = generate_customer_response(
-                    sentiment, confidence_level, issue_category, user_input
-                )
-                
-                st.session_state.messages.append({
-                    "role": "bot",
-                    "content": bot_response,
-                    "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                })
-                
-                st.rerun()
 
-if __name__ == "__main__":
-    main()
+# Chat input
+st.markdown("---")
+user_input = st.chat_input("Express your feelings or ask for help...")
+
+if user_input:
+    # Add user message to conversation
+    user_msg = {
+        'type': 'user', 
+        'content': user_input,
+        'timestamp': datetime.now()
+    }
+    st.session_state.conversation.append(user_msg)
+    
+    # Get bot response with emotional analysis
+    response, overall_sentiment, primary_emotion, confidence, emotion_scores = chatbot.get_response(user_input)
+    
+    # Add bot response
+    st.session_state.conversation.append({
+        'type': 'assistant',
+        'content': response,
+        'timestamp': datetime.now()
+    })
+    
+    # Update user message with detailed emotion info
+    user_msg.update({
+        'sentiment': overall_sentiment,
+        'primary_emotion': primary_emotion,
+        'confidence': confidence,
+        'emotion_scores': emotion_scores
+    })
+    
+    # Update statistics - SAFE ACCESS
+    if primary_emotion in st.session_state.sentiment_stats:
+        st.session_state.sentiment_stats[primary_emotion] += 1
+    else:
+        # Initialize if emotion doesn't exist
+        st.session_state.sentiment_stats[primary_emotion] = 1
+    
+    # Update emotion trend
+    sentiment_score = 1 if overall_sentiment == 'positive' else -1 if overall_sentiment == 'negative' else 0
+    st.session_state.emotion_trend.append({
+        'timestamp': datetime.now(),
+        'sentiment_score': sentiment_score,
+        'emotion': primary_emotion
+    })
+    
+    st.rerun()
+
+# Emotional intelligence metrics
+if st.session_state.conversation:
+    with st.expander("🧠 Emotional Intelligence Report"):
+        if st.session_state.emotion_trend:
+            recent_trend = st.session_state.emotion_trend[-10:]  # Last 10 interactions
+            if recent_trend:
+                avg_sentiment = np.mean([t['sentiment_score'] for t in recent_trend])
+                st.metric("Current Emotional Climate", 
+                         "Positive" if avg_sentiment > 0.3 else "Negative" if avg_sentiment < -0.3 else "Neutral",
+                         f"{avg_sentiment:.2f}")
+        
+        total_interactions = len([m for m in st.session_state.conversation if m['type'] == 'user'])
+        if total_interactions > 0:
+            positive_pct = len([m for m in st.session_state.conversation 
+                              if m.get('sentiment') == 'positive']) / total_interactions * 100
+            st.metric("Positive Interaction Rate", f"{positive_pct:.1f}%")
+
+# Footer
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: gray;'>"
+    "Advanced Emotion-Aware Chatbot | Understanding the full spectrum of human emotions"
+    "</div>", 
+    unsafe_allow_html=True
+)
